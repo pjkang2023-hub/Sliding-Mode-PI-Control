@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMC Comparison: Reaching Law vs. Equivalent Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; color: #333; }
+        .container { max-width: 1400px; margin: auto; display: grid; grid-template-columns: 350px 1fr; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { grid-column: 1 / -1; text-align: center; color: #2c3e50; margin-bottom: 10px; }
+        h2, h3 { color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 5px; margin-top: 0; }
+        
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-weight: 600; font-size: 0.9em; margin-bottom: 3px; }
+        .input-group input { width: 100%; padding: 8px; border: 1px solid #bdc3c7; border-radius: 4px; box-sizing: border-box; }
+        .input-row { display: flex; gap: 10px; }
+        
+        .method-box { border-left: 4px solid; padding-left: 10px; margin-bottom: 20px; }
+        .m1 { border-color: #3498db; } /* Blue */
+        .m2 { border-color: #e74c3c; } /* Red */
+        
+        button { width: 100%; padding: 12px; background: #27ae60; color: white; border: none; border-radius: 5px; font-size: 1.1em; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #219150; }
+
+        .charts-area { display: flex; flex-direction: column; gap: 20px; }
+        canvas { background: white; border-radius: 4px; max-height: 300px; }
+        
+        .metrics { margin-top: 20px; font-size: 0.9em; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; }
+        
+        .formulas { font-size: 0.85em; background: #fafafa; padding: 10px; border-radius: 4px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<h1>⚔️ SMC Method Comparison Simulator</h1>
+
+<div class="container">
+    <div class="panel">
+        <h2>⚙️ Parameters</h2>
+        
+        <h3>Plant: \(\dot{x} = -ax + bu + d\)</h3>
+        <div class="input-row">
+            <div class="input-group">
+                <label>Param \(a\)</label>
+                <input type="number" id="a" value="1" step="0.1">
+            </div>
+            <div class="input-group">
+                <label>Param \(b\)</label>
+                <input type="number" id="b" value="2" step="0.1">
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Reference \(r\)</label>
+            <input type="number" id="r" value="10">
+        </div>
+        <div class="input-group">
+            <label>Disturbance \(d\) (at \(t > T/2\))</label>
+            <input type="number" id="dist" value="5">
+        </div>
+
+        <div class="method-box m1">
+            <h3>Method 1: Reaching Law</h3>
+            <div class="formulas">
+                \(u = K_p e + K_i \int e + \frac{a}{b}r\) <br>
+                \(K_p = \frac{\lambda - a + k}{b}, K_i = \frac{k\lambda}{b}\)
+            </div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>Surface \(\lambda\)</label>
+                    <input type="number" id="lambda" value="5">
+                </div>
+                <div class="input-group">
+                    <label>Reaching \(k\)</label>
+                    <input type="number" id="k" value="10">
+                </div>
+            </div>
+        </div>
+
+        <div class="method-box m2">
+            <h3>Method 2: Eq. Control</h3>
+            <div class="formulas">
+                \(u = K_p e + K_i \int e\) <br>
+                \(K_p = \frac{a + \alpha_2/\alpha_1}{b}, K_i = \frac{\alpha_2/\alpha_1}{b}\)
+            </div>
+            <div class="input-group">
+                <label>Ratio \(\alpha_2/\alpha_1\) (Bandwidth)</label>
+                <input type="number" id="alpha_ratio" value="5">
+            </div>
+            <div class="input-group" style="display:none;"> 
+                <input type="number" id="alpha1" value="1"> 
+            </div>
+        </div>
+
+        <h3>Simulation Settings</h3>
+        <div class="input-row">
+            <div class="input-group">
+                <label>Time \(T_{max}\)</label>
+                <input type="number" id="tmax" value="5">
+            </div>
+            <div class="input-group">
+                <label>Step \(h\)</label>
+                <input type="number" id="h" value="0.01">
+            </div>
+        </div>
+        <div class="input-group">
+            <label>Actuator Limit \(u_{max}\) (+/-)</label>
+            <input type="number" id="umax" value="20">
+        </div>
+
+        <button onclick="runComparison()">Run Comparison</button>
+        
+        <div class="metrics">
+            <h3>📊 Performance Metrics</h3>
+            <table id="metricsTable">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th style="color:#3498db">Method 1</th>
+                        <th style="color:#e74c3c">Method 2</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>Rise Time</td><td id="m1_rise">-</td><td id="m2_rise">-</td></tr>
+                    <tr><td>Peak Error (Dist)</td><td id="m1_dist">-</td><td id="m2_dist">-</td></tr>
+                    <tr><td>Total Energy (\(\int u^2\))</td><td id="m1_eff">-</td><td id="m2_eff">-</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="charts-area">
+        <div class="panel">
+            <h3>State Response \(x(t)\)</h3>
+            <canvas id="stateChart"></canvas>
+        </div>
+        <div class="panel">
+            <h3>Control Effort \(u(t)\)</h3>
+            <canvas id="controlChart"></canvas>
+        </div>
+        <div class="panel">
+            <h3>Sliding Surface \(S(t)\)</h3>
+            <canvas id="surfaceChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+    let stateChart, controlChart, surfaceChart;
+
+    function runComparison() {
+        // 1. Get Inputs
+        const a = parseFloat(document.getElementById('a').value);
+        const b = parseFloat(document.getElementById('b').value);
+        const r = parseFloat(document.getElementById('r').value);
+        const dist_mag = parseFloat(document.getElementById('dist').value);
+        
+        const lambda = parseFloat(document.getElementById('lambda').value);
+        const k = parseFloat(document.getElementById('k').value);
+        
+        const alpha_ratio = parseFloat(document.getElementById('alpha_ratio').value);
+        
+        const Tmax = parseFloat(document.getElementById('tmax').value);
+        const h = parseFloat(document.getElementById('h').value);
+        const ulimit = parseFloat(document.getElementById('umax').value);
+
+        // 2. Calculate Gains
+        // Method 1
+        const Kp1 = (lambda - a + k) / b;
+        const Ki1 = (k * lambda) / b;
+        const FF1 = (a * r) / b;
+
+        // Method 2
+        const Kp2 = (a + alpha_ratio) / b;
+        const Ki2 = alpha_ratio / b;
+        
+        // 3. Simulation Loop
+        let t = 0;
+        let x1 = 0, x2 = 0; // States
+        let int1 = 0, int2 = 0; // Integrators
+        
+        const dataT = [], dataX1 = [], dataX2 = [], dataU1 = [], dataU2 = [], dataS1 = [], dataS2 = [];
+        const dataR = [];
+        
+        let energy1 = 0, energy2 = 0;
+        let rise1 = null, rise2 = null;
+        let peakDistErr1 = 0, peakDistErr2 = 0;
+
+        while (t <= Tmax) {
+            // Disturbance Logic (Step disturbance at T/2)
+            const d = (t > Tmax/2) ? dist_mag : 0;
+
+            // Errors
+            const e1 = r - x1;
+            const e2 = r - x2;
+
+            // Method 1 Control Law (Reaching Law)
+            // u = Kp*e + Ki*int + Feedforward
+            let u1 = (Kp1 * e1) + (Ki1 * int1) + FF1;
+            
+            // Method 2 Control Law (Equivalent Control)
+            // u = Kp*e + Ki*int (No explicit Feedforward)
+            let u2 = (Kp2 * e2) + (Ki2 * int2);
+
+            // Saturation
+            u1 = Math.max(-ulimit, Math.min(ulimit, u1));
+            u2 = Math.max(-ulimit, Math.min(ulimit, u2));
+
+            // Store Data
+            dataT.push(t.toFixed(2));
+            dataX1.push(x1);
+            dataX2.push(x2);
+            dataU1.push(u1);
+            dataU2.push(u2);
+            dataR.push(r);
+
+            // Calculate Surfaces for Visualization
+            // S1 = e + lambda * int
+            const S1_val = e1 + lambda * int1;
+            dataS1.push(S1_val);
+            // S2 = e + alpha_ratio * int (Assuming alpha1=1, alpha2=ratio)
+            const S2_val = e2 + alpha_ratio * int2;
+            dataS2.push(S2_val);
+
+            // Metrics Calculation
+            if (rise1 === null && x1 >= 0.9 * r) rise1 = t;
+            if (rise2 === null && x2 >= 0.9 * r) rise2 = t;
+            
+            if (t > Tmax/2) {
+                peakDistErr1 = Math.max(peakDistErr1, Math.abs(r - x1));
+                peakDistErr2 = Math.max(peakDistErr2, Math.abs(r - x2));
+            }
+            energy1 += (u1 * u1) * h;
+            energy2 += (u2 * u2) * h;
+
+            // Update Integrators
+            int1 += e1 * h;
+            int2 += e2 * h;
+
+            // Update Plant (Euler Integration)
+            // dx = -ax + bu + d
+            const dx1 = -a * x1 + b * u1 + d;
+            const dx2 = -a * x2 + b * u2 + d;
+
+            x1 += dx1 * h;
+            x2 += dx2 * h;
+            t += h;
+        }
+
+        // 4. Update UI Metrics
+        document.getElementById('m1_rise').innerText = rise1 ? rise1.toFixed(2) + 's' : 'N/A';
+        document.getElementById('m2_rise').innerText = rise2 ? rise2.toFixed(2) + 's' : 'N/A';
+        document.getElementById('m1_dist').innerText = peakDistErr1.toFixed(3);
+        document.getElementById('m2_dist').innerText = peakDistErr2.toFixed(3);
+        document.getElementById('m1_eff').innerText = energy1.toFixed(1);
+        document.getElementById('m2_eff').innerText = energy2.toFixed(1);
+
+        // 5. Render Charts
+        renderCharts(dataT, dataX1, dataX2, dataR, dataU1, dataU2, dataS1, dataS2);
+    }
+
+    function renderCharts(labels, x1, x2, ref, u1, u2, s1, s2) {
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            elements: { point: { radius: 0 } }, // Hide points for speed
+            scales: { x: { display: true, title: {display:true, text:'Time (s)'} } }
+        };
+
+        // State Chart
+        if(stateChart) stateChart.destroy();
+        stateChart = new Chart(document.getElementById('stateChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Method 1 (Reaching)', data: x1, borderColor: '#3498db', borderWidth: 2, fill:false },
+                    { label: 'Method 2 (Eq. Control)', data: x2, borderColor: '#e74c3c', borderWidth: 2, fill:false },
+                    { label: 'Reference', data: ref, borderColor: '#2ecc71', borderDash: [5,5], borderWidth: 1 }
+                ]
+            },
+            options: commonOptions
+        });
+
+        // Control Chart
+        if(controlChart) controlChart.destroy();
+        controlChart = new Chart(document.getElementById('controlChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'u1 (Method 1)', data: u1, borderColor: '#3498db', borderWidth: 1 },
+                    { label: 'u2 (Method 2)', data: u2, borderColor: '#e74c3c', borderWidth: 1 }
+                ]
+            },
+            options: commonOptions
+        });
+
+        // Surface Chart
+        if(surfaceChart) surfaceChart.destroy();
+        surfaceChart = new Chart(document.getElementById('surfaceChart'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'S1 (Method 1)', data: s1, borderColor: '#3498db', borderWidth: 1 },
+                    { label: 'S2 (Method 2)', data: s2, borderColor: '#e74c3c', borderWidth: 1 },
+                    { label: 'S=0', data: Array(labels.length).fill(0), borderColor: '#333', borderWidth: 1, borderDash:[2,2] }
+                ]
+            },
+            options: commonOptions
+        });
+    }
+
+    // Initial Run
+    window.onload = runComparison;
+</script>
+
+</body>
+</html>
